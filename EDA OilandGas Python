@@ -1,0 +1,155 @@
+#!/usr/bin/env python
+# coding: utf-8
+
+import numpy as np # linear algebra
+import pandas as pd # 
+import matplotlib.pyplot as plt
+import seaborn as sns
+get_ipython().run_line_magic('matplotlib', 'inline')
+sns.set()
+
+full = pd.read_csv('Documents\FullDBFrank.csv', delimiter=';')
+#This file contains the information of the DB without the comments of the causes 
+full.head()
+
+#Check for the missing values in the columns 
+fig, ax = plt.subplots(figsize=(9,5))
+sns.heatmap(full.isnull(), cbar=False, cmap="YlGnBu_r")
+plt.show()
+
+
+# In this example, I drop the columns with missing values:
+# - The Root Causes have too many missing values so it is not really important.
+# - The Comments column could be included in a NLP analysis, that is outside of the scope of this kernel
+
+train = full.drop(columns = ["Comments","Root_causes"])
+#This file contains the information of the DB without the comments of the causes 
+train.head()
+
+train.info()
+#train['Amount'] = train['Amount'].astype('float64') 
+
+train[["Project", "Amount"]].groupby(['Project'], as_index=False).sum().sort_values(by='Amount', ascending=False)
+
+#The next grpah shows the mean 
+sns.barplot(x='Project', y='Amount', data=train)
+plt.ylabel("Amount")
+plt.title("Average Loss Overcost in O&G engineering project (including recovery actions)")
+plt.xticks(rotation=90)
+plt.show()
+
+
+# The table and the graph shows that USAN project doesnt have any positive or negative impact data, so I will drop this project.
+# The projects Block17 and EPC2B have great variance. And the Pazflor project should have a great amount of overcost, however the graphs shows a small amount.
+# 
+# This mean that the data have positive and negative values for all the project.
+# The positive values are the overcost caused by the Project management problems. 
+# The negative values are the actions taken to correct those values 
+
+overcost = train[train.Amount > 0]
+
+sns.barplot(x='Project', y='Amount', data=overcost)
+plt.ylabel("Amount")
+plt.title("Average Loss Overcost in O&G engineering project")
+plt.xticks(rotation=90)
+plt.show()
+
+#Now we check again the total amount loss due to PM problems, without the corrective actions
+overcost[["Project", "Amount"]].groupby(['Project'], as_index=False).sum().sort_values(by='Amount', ascending=False)
+
+# Delete the rows of the proejcts EGP3B, Oso, Legend Metrology
+overcost.drop(overcost[overcost['Project'] == ("EGP3B")].index, inplace=True)
+overcost.drop(overcost[overcost['Project'] == ("Oso")].index , inplace=True)
+overcost.drop(overcost[overcost['Project'] == ("Legend Metrology")].index , inplace=True)
+
+# We see that the there are only positive values and USAN project is out
+
+sns.barplot(x='Project', y='Amount', hue="Main Category", data=overcost)
+sns.set(rc={'figure.figsize':(19,8.27)})
+plt.ylabel("Amount")
+plt.title("Average Loss Overcost in O&G engineering project")
+plt.show()
+
+overcost.groupby(['Project']).Amount.sum()
+
+#Normalize results
+normalized= overcost.copy()
+
+normalized.loc[normalized.Project == 'ALNG', 'Amount'] = 100*overcost.loc[overcost.Project == 'ALNG', 'Amount']/21541
+normalized.loc[normalized.Project == 'Block 15', 'Amount'] = 100*overcost.loc[overcost.Project == 'Block 15', 'Amount']/85255
+normalized.loc[normalized.Project == 'Block 17', 'Amount'] = 100*overcost.loc[overcost.Project == 'Block 17', 'Amount']/17506
+normalized.loc[normalized.Project == 'Epc2b', 'Amount'] = 100*overcost.loc[overcost.Project == 'Epc2b', 'Amount']/3088
+normalized.loc[normalized.Project == 'Greater Plutonio', 'Amount'] = 100*overcost.loc[overcost.Project == 'Greater Plutonio', 'Amount']/2037
+normalized.loc[normalized.Project == 'Moho Bilondo', 'Amount'] = 100*overcost.loc[overcost.Project == 'Moho Bilondo', 'Amount']/24338.34
+normalized.loc[normalized.Project == 'Pazflor', 'Amount'] = 100*overcost.loc[overcost.Project == 'Pazflor', 'Amount']/34990.099999
+normalized.loc[normalized.Project == 'Saxi', 'Amount'] = 100*overcost.loc[overcost.Project == 'Saxi', 'Amount']/4684
+
+normalized.groupby(['Project']).Amount.sum()
+
+#high_overcost = overcost[overcost["Amount"] > 10]
+sns.barplot(x='Project', y='Amount', hue="Main Category", data=normalized)
+sns.set(rc={'figure.figsize':(17.7,8.27)})
+plt.ylabel("Amount")
+plt.title("Average Loss Overcost in O&G engineering project")
+plt.show()
+
+# The graphic is better but there are some outliers that could pollute the analysis
+
+#Look for outliers , thresshold in 50
+# df.loc[<row selection>, <column selection>]
+out1 = normalized.loc[normalized.Amount > 30, :].sort_values(by=['Amount'], ascending=False)
+out1
+
+normalized.drop(normalized[normalized['Amount'] > 30].index, inplace=True)
+
+#high_overcost = overcost[overcost["Amount"] > 10]
+sns.barplot(x='Project', y='Amount', hue="Main Category", data=normalized)
+sns.set(rc={'figure.figsize':(17.7,8.27)})
+plt.ylabel("Amount")
+plt.title("Average Loss Overcost in O&G engineering project")
+plt.show()
+
+# Now is time to introduce the time and the cause details as flaot in order to do some extra calculation
+
+
+#Chaning the months to numbers 
+mapping = {'January': 1, 'February': 2, 'March':3, 'April':4, 'May':5, 'June': 6, 'July': 7, 'August':8, 'September':9, 'October':10, 'November':11, 'December':12}
+normalized['MonthN']=normalized.Month.map(mapping)
+normalized.columns
+
+#Chaning the causes to numbers 
+mapping2 = {'1.2 Late delivery from suppliers/subcontractors': 1,
+'1.4 Ship Rescheduling/Reallocation : Change of vessel' : 2,
+'1.1 Late issue of AFC documentation':3,
+'1.3 Late availability of ships extra costs':4,
+'2.1 Incorrect estimate of cost in tender':5,
+'2.2 Improper White Book Rates / Escalations':6,
+'2.4 Incorrect estimate of allowances/contingencies':7,
+'2.5 Improper Contract/Subcontract Flowdown':8,
+'3.1 Materials and equipment delivered out-of specs':9,
+'3.2 Incomplete or partial delivery':10,
+'4.1 Incorrect design engineering':11,
+'4.2 Incorrect installation engineering':12,
+'4.3 Extra costs/staff cause by final docs delay':13,
+'4.5 Incorrect execution offshore by Acergy':14,
+'4.6 Incorrect execution offshore by 3rd party':15,
+'4.7 Incorrect onshore local logistic':16,
+'5. EQUIPMENT BREAKDOWN':17,
+'5.1 Lack of preventive maintenance':18,
+'5.2 Misuse of equipment':19}
+normalized['CauseN']=normalized.Causes_details.map(mapping2)
+normalized.info()
+
+normalized.plot(kind='scatter', x='CauseN', y='Amount')
+plt.show()
+
+sns.jointplot('CauseN','MonthN',normalized, kind="kde", space=0, color="g")
+#sns.jointplot('CauseN','MonthN',normalized, kind="hex", space=0, color="g")
+
+# Main causes are between 5 to 12 and the month is distrubuted all over the year, the are two poles around  months 2 and 10
+
+from scipy import stats
+for name in normalized:
+    print(name, "column entropy :",round(stats.entropy(normalized[name].value_counts(normalize=True), base=2),2))
+
+normalized.to_csv('normalized.csv', index=False)
